@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>VexaAI - Phishing Detector</title>
+  <link rel="stylesheet" href="/static/css/style.css"/>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='shield.png') }}">
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#378ADD" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L3 7v5c0 5.25 3.75 10.15 9 11.35C17.25 22.15 21 17.25 21 12V7L12 2z"/>
+      </svg>
+      <span><b style="color:#378ADD">Vexa</b>AI</span>
+      <span class="logo-divider"></span>
+      <span class="logo-sub">Phishing Detector</span>
+    </div>
+    <div class="nav-right">
+      <span class="pulse-dot" id="pulseDot"></span>
+      <span class="badge" id="modelBadge">Checking model…</span>
+      <button class="btn-retrain" id="retrainBtn" onclick="triggerRetrain()" title="Retrain model with data in /data folder">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+        Retrain
+      </button>
+    </div>
+  </nav>
+
+  <!-- WebGL canvas -->
+  <div class="canvas-wrap">
+    <canvas id="glCanvas"></canvas>
+    <div class="canvas-hud">
+      <div class="hud-label">Neural threat map — live</div>
+      <div class="hud-model" id="hudModel">Naive Bayes · TF-IDF · 2000 features</div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar">
+    <div class="stat-card">
+      <div class="stat-label">Threats blocked</div>
+      <div class="stat-value danger" id="statBlocked">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Safe inputs</div>
+      <div class="stat-value safe" id="statSafe">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Scanned this session</div>
+      <div class="stat-value" id="statTotal">0</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Model</div>
+      <div class="stat-value info">MultinomialNB</div>
+    </div>
+  </div>
+
+  <!-- Scanner -->
+  <section class="scanner-section">
+    <h1 class="scanner-title">Scan email or URL for phishing</h1>
+    <p class="scanner-sub">
+      Paste a full email body, subject line, URL, or any suspicious text. Your trained
+      <code>MultinomialNB</code> model analyses it using TF-IDF features.
+      Press <kbd>Ctrl+Enter</kbd> to scan.
+    </p>
+
+    <textarea id="scanInput" rows="5"
+      placeholder="Paste email body, subject, or URL here…&#10;&#10;Example:  Dear valued customer, your account has been locked. Click http://paypa1-secure.xyz/verify to restore access immediately."></textarea>
+
+    <div class="btn-row">
+      <button id="scanBtn" onclick="startScan()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+        Scan now
+      </button>
+      <button class="btn-ghost" onclick="clearScan()">Clear</button>
+      <button class="btn-ghost" onclick="loadDemo(1)">Demo phishing</button>
+      <button class="btn-ghost" onclick="loadDemo(0)">Demo safe</button>
+    </div>
+
+    <!-- Scanning state -->
+    <div id="scanningCard" class="scanning-card hidden">
+      <div class="scan-track"><div class="scan-bar"></div></div>
+      <span>Running your Naive Bayes model…</span>
+    </div>
+
+    <!-- Result card -->
+    <div id="resultCard" class="result-card hidden">
+      <div class="result-header">
+        <div id="resultIcon" class="result-icon"></div>
+        <div style="flex:1">
+          <div id="resultTitle" class="result-title"></div>
+          <div id="resultMeta"  class="result-meta"></div>
+        </div>
+        <div id="resultBadge" class="result-badge"></div>
+      </div>
+
+      <div class="conf-section">
+        <div class="conf-row">
+          <span class="conf-lbl">Safe</span>
+          <div class="conf-track">
+            <div id="confBar"   class="conf-bar"></div>
+            <div id="confThumb" class="conf-thumb"></div>
+          </div>
+          <span class="conf-lbl">Phishing</span>
+        </div>
+        <div class="conf-pct" id="confPct"></div>
+      </div>
+
+      <div id="indicatorsWrap" class="indicators-wrap hidden">
+        <div class="ind-label">Detected signals</div>
+        <div id="indicators" class="indicators"></div>
+      </div>
+    </div>
+
+    <!-- Error card -->
+    <div id="errorCard" class="error-card hidden">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      <span id="errorMsg"></span>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="info-section">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">01</div>
+        <div class="step-name">Input</div>
+        <div class="step-desc">Paste any email body, subject, or URL into the scanner.</div>
+      </div>
+      <div class="step-sep">→</div>
+      <div class="step">
+        <div class="step-num">02</div>
+        <div class="step-name">TF-IDF</div>
+        <div class="step-desc">Your <code>vectorizer.pkl</code> converts text into 2,000 weighted features.</div>
+      </div>
+      <div class="step-sep">→</div>
+      <div class="step">
+        <div class="step-num">03</div>
+        <div class="step-name">MultinomialNB</div>
+        <div class="step-desc">Your <code>model.pkl</code> predicts phishing probability using Naive Bayes.</div>
+      </div>
+      <div class="step-sep">→</div>
+      <div class="step">
+        <div class="step-num">04</div>
+        <div class="step-name">Verdict</div>
+        <div class="step-desc">Confidence score and phishing signals are shown instantly.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Retrain panel -->
+  <section class="retrain-section info-section">
+    <h2>Retrain your model</h2>
+    <p class="scanner-sub">
+      Drop new CSV files into the <code>/data</code> folder, then click <b>Retrain model</b>.
+      The server will run <code>train.py</code>, save new <code>model.pkl</code> and
+      <code>vectorizer.pkl</code>, and reload them live — no restart needed.
+    </p>
+    <p class="scanner-sub">
+      CSV files must have a <code>label</code> column and at least one of:
+      <code>text_combined</code>, <code>subject</code> + <code>body</code>, <code>body</code>, or <code>message</code>.
+    </p>
+    <button class="btn-retrain-big" onclick="triggerRetrain()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      Retrain model
+    </button>
+    <div id="retrainOutput" class="retrain-output hidden"></div>
+  </section>
+
+  <!-- Scan log -->
+  <section class="info-section">
+    <h2>Scan history</h2>
+    <div id="scanLog" class="scan-log">
+      <div class="log-empty">No scans yet.</div>
+    </div>
+  </section>
+
+  <script src="/static/js/webgl.js"></script>
+  <script src="/static/js/app.js"></script>
+ <p style="text-align:center; font-size:14px; color:#888; margin-top:20px; font-family:Arial, sans-serif;">
+Vexa | Built with intention by <br> Jesik, Suryansh & Ayaan Singh
+</p>
+</body>
+</html>
