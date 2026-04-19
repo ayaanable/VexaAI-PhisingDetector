@@ -31,9 +31,5 @@ dist/
 build/
 *.egg-info/
 
-# Project-generated model files
-model.pkl
-vectorizer.pkl
-
 # Local logs
 *.log
